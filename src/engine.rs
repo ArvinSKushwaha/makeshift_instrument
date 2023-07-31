@@ -3,9 +3,11 @@ use thiserror::Error;
 
 use crate::playback::{Playback, PlaybackError, PlaybackCreationError};
 
+pub type SoundByte = [f32; 256];
+
 pub struct Engine {
     playback: Playback,
-    channel: Sender<f32>,
+    channel: Sender<SoundByte>,
 }
 
 #[derive(Debug, Error)]
@@ -18,11 +20,24 @@ pub enum EngineError {
 
 impl Engine {
     pub fn new() -> Result<Self, EngineError> {
-        let (playback, channel) = Playback::new()?;
+        let (mut playback, channel) = Playback::new()?;
+        playback.initialize_stream()?;
 
         Ok(Self {
             playback,
             channel,
         })
+    }
+
+    pub fn channel(&self) -> &Sender<SoundByte> {
+        &self.channel
+    }
+
+    pub fn play(&self) -> Result<(), PlaybackError> {
+        self.playback.play()
+    }
+
+    pub fn pause(&self) -> Result<(), PlaybackError> {
+        self.playback.pause()
     }
 }

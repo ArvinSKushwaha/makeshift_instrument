@@ -13,3 +13,5 @@ clap = { version = "4.3", features = ["derive"] }
 flume = "0.10"
 bytemuck = { version = "1", features = ["derive"] }
 bytes = "1"
+soundfont = "0.0.2"
+riff = "1"

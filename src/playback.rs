@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Host, PauseStreamError, PlayStreamError, Stream, StreamConfig,
@@ -6,12 +8,17 @@ use cpal::{
 use flume::{Receiver, Sender};
 use thiserror::Error;
 
+use crate::engine::SoundByte;
+
+pub const DEFAULT_SAMPLE_RATE: cpal::SampleRate = cpal::SampleRate(44100);
+
 pub struct Playback {
     host: Host,
     device: Device,
     config: StreamConfig,
     stream: Option<Stream>,
-    recv: Receiver<f32>,
+    buffer: VecDeque<f32>,
+    recv: Receiver<SoundByte>,
 }
 
 #[derive(Debug, Error)]
@@ -35,7 +42,7 @@ pub enum PlaybackError {
 }
 
 impl Playback {
-    pub fn new() -> Result<(Self, Sender<f32>), PlaybackCreationError> {
+    pub fn new() -> Result<(Self, Sender<SoundByte>), PlaybackCreationError> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -45,7 +52,7 @@ impl Playback {
         let supported_config = supported_configs_range
             .next()
             .ok_or(PlaybackCreationError::NoSupportedConfiguration)?
-            .with_sample_rate(cpal::SampleRate(44100));
+            .with_sample_rate(DEFAULT_SAMPLE_RATE);
         let config = supported_config.config();
 
         let (trns, recv) = flume::unbounded();
@@ -56,17 +63,14 @@ impl Playback {
                 device,
                 config,
                 recv,
+                buffer: VecDeque::with_capacity(256),
                 stream: None,
             },
             trns,
         ))
     }
 
-    pub fn play(&mut self) -> Result<(), PlaybackError> {
-        if self.stream.is_none() {
-            self.initialize_stream()?;
-        }
-
+    pub fn play(&self) -> Result<(), PlaybackError> {
         let stream = self.stream.as_ref().unwrap();
 
         stream.play()?;
@@ -74,7 +78,7 @@ impl Playback {
         Ok(())
     }
 
-    pub fn pause(&mut self) -> Result<(), PlaybackError> {
+    pub fn pause(&self) -> Result<(), PlaybackError> {
         match &self.stream {
             Some(stream) => {
                 stream.pause()?;
@@ -84,21 +88,22 @@ impl Playback {
         }
     }
 
-    fn initialize_stream(&mut self) -> Result<(), PlaybackError> {
+    pub fn initialize_stream(&mut self) -> Result<(), PlaybackError> {
         let recv = self.recv.clone();
-        self.device.build_output_stream(
+        self.stream = Some(self.device.build_output_stream(
             &self.config,
-            move |buffer, _| {
-                buffer
-                    .iter_mut()
-                    .zip(recv.try_iter().chain(std::iter::repeat(0.0)))
-                    .for_each(|(b, c)| {
-                        *b = c;
-                    })
+            move |buffer: &mut [f32], _| {
+                println!("{}", buffer.len());
+                // buffer
+                //     .iter_mut()
+                //     .zip(recv.try_iter().chain(std::iter::repeat(0.0)))
+                //     .for_each(|(b, c)| {
+                //         *b = c;
+                //     })
             },
             |err| eprintln!("Encountered error: {}", err),
             None,
-        )?;
+        )?);
 
         Ok(())
     }
